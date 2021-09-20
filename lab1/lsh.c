@@ -36,7 +36,7 @@ void stripwhite(char *);
 // My own
 void execComm(Command *);
 void exComm(Command *);
-void pipeExec(Command *, Command *);
+void pipeExec(Command *);
 void sigtest(int);
 
 int main(void)
@@ -94,12 +94,12 @@ void RunCommand(int parse_result, Command *cmd)
   For system calls in the background
     ! Doesn't work
   */
-  exComm(cmd);
+  //exComm(cmd);
 
   /* 
   * For pipes
   */
-  //pipeExec(cmd);
+  pipeExec(cmd);
 
 
   //printf("\n");
@@ -168,7 +168,7 @@ void exComm(Command *cmd)
   }
 }
 
-void pipeExec(Command *cmd, Command *cmd2)
+void pipeExec(Command *cmd)
 {
   int piperd[2]; 
   pid_t pid, pid2;
@@ -213,7 +213,7 @@ void pipeExec(Command *cmd, Command *cmd2)
       dup2(piperd[0], STDIN_FILENO);
       close(piperd[0]);
 
-      if(execvp(*cmd2->pgm->pgmlist, cmd2->pgm->pgmlist) < 0)
+      if(execvp(*cmd->pgm->pgmlist, cmd->pgm->pgmlist) < 0)
       {
         printf("\nExecution failed on child 2");
         exit(0);
@@ -221,8 +221,11 @@ void pipeExec(Command *cmd, Command *cmd2)
 
     }
     else {
-      wait(NULL);
-      wait(NULL);
+      printf("\nFörsta wait\n");
+      waitpid(pid, NULL, 0);
+      printf("\nAndra wait\n");
+      int a = waitpid(pid2, NULL, 0);
+      printf("\n%d", a);
     }
   }
 }
