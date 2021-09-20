@@ -199,7 +199,7 @@ void pipeExec(Command *cmd, Command *cmd2)
       dup2(piperd[0], STDIN_FILENO);
       close(piperd[0]);
 
-      if(execvp(*cmd->pgm->next->pgmlist, cmd->pgm->next->pgmlist) < 0)
+      if(execvp(*cmd2->pgm->pgmlist, cmd2->pgm->pgmlist) < 0)
       {
         printf("\nExecution failed on child 2");
         exit(0);
