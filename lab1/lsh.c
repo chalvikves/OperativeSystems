@@ -24,6 +24,7 @@
 #include <readline/history.h>
 #include "parse.h"
 #include <unistd.h>
+#include <signal.h>
 
 #define TRUE 1
 #define FALSE 0
@@ -36,6 +37,7 @@ void stripwhite(char *);
 void execComm(Command *);
 void exComm(Command *);
 void pipeExec(Command *, Command *);
+void sigtest(int);
 
 int main(void)
 {
@@ -128,12 +130,18 @@ void execComm(Command *cmd)
   }
 }
 
+void sigtest(int sig) {
+  if(sig == SIGINT) return;
+
+}
+
 void exComm(Command *cmd)
 {
   int status;
   pid_t pid;
 
   pid = fork();
+
   if (pid == -1)
   {
     printf("\nFork failed");
@@ -149,8 +157,14 @@ void exComm(Command *cmd)
   }
   else
   {
-    waitpid(pid, &status, 0);
-    return;
+    if(cmd->background){return;}
+    // No waiting for child 
+    else
+    {
+      signal(SIGINT, sigtest);
+      waitpid(pid, &status, 0);
+      return;
+    }
   }
 }
 
