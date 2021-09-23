@@ -41,11 +41,27 @@ void exComm(Command *);
 void pipeExec(Command *);
 void sigtest(int);
 void redirectExec(Command *);
+void handle_sigint_and_sigchld(int);
+pid_t child_pid = -1;
+
 
 int main(void)
 {
   Command cmd;
   int parse_result;
+  // added to make sure ctrl+c does not work in the beginning. If this is the track we want to go, we need to set the handler to SIG_IGN through  the sa_handler function instead:
+  
+  /* struct sigaction sa;
+  sa.sa_handler = SIG_IGN;   // more details at flylib.com/books/en/4.443.1.96/1/
+  */
+  
+  // sigaction(SIGINT, SIG_IGN, NULL);
+
+  //added to handle ctrl c and children from the start
+  struct sigaction sa;
+  sa.sa_handler = &handle_sigint_and_sigchld;
+  sigaction(SIGINT, &sa, NULL);
+  sigaction(SIGCHLD, &sa, NULL);
 
   while (TRUE)
   {
@@ -96,7 +112,7 @@ void RunCommand(int parse_result, Command *cmd)
   /* 
   * For system calls in the background
   */
-  //exComm(cmd);
+  exComm(cmd);
 
   /* 
   * For pipes
@@ -134,19 +150,38 @@ void execComm(Command *cmd)
   }
 }
 
-void sigtest(int sig)
-{
-  if (sig == SIGINT)
-    return;
+void handle_sigint_and_sigchld(int sig) {
+  if(sig == SIGINT){
+    if(child_pid != -1){
+      kill(child_pid, SIGTERM);
+      child_pid = -1;
+
+    }
+  }
+  if(sig == SIGCHLD){
+    // see if any child processes have terminated. If so, the parent will remove them from the process table
+    while (waitpid((pid_t)(-1), 0, WNOHANG) > 0) {}
+  }
 }
 
 void exComm(Command *cmd)
 {
   int status;
   pid_t pid;
-
+  
+  if(strcmp("exit", *cmd->pgm->pgmlist) == 0){
+    exit(1);
+  }
+  if(strcmp("cd", *cmd->pgm->pgmlist) == 0){
+    // Took inspiration from print_pgm function. 
+    char **pl = cmd->pgm->pgmlist;
+    char* path = *(pl+1);
+    if(chdir(path) != 0){
+      printf("Error in path: %s", path);
+    }
+    return;
+  }
   pid = fork();
-
   if (pid == -1)
   {
     printf("\nFork failed");
@@ -154,6 +189,9 @@ void exComm(Command *cmd)
   }
   else if (pid == 0)
   {
+    // used to change the gid of the children, to make sure they do not receive the SIGINT that is sent to the parent by pressing CTRL-C.
+    // this way, the parent must accept the SIGINT and then send an appropriate signal only to the child that is supposed to be affected by the SIGINT.
+    setsid();
     if (execvp(*cmd->pgm->pgmlist, cmd->pgm->pgmlist) < 0)
     {
       printf("\nCould not execute the command");
@@ -169,12 +207,22 @@ void exComm(Command *cmd)
     // No waiting for child
     else
     {
-      signal(SIGINT, sigtest);
+      child_pid = pid;
       waitpid(pid, &status, 0);
+      child_pid = -1;
       return;
     }
   }
 }
+
+
+
+
+
+
+
+
+
 
 void pipeExec(Command *cmd)
 {
