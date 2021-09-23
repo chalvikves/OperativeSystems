@@ -100,9 +100,6 @@ void RunCommand(int parse_result, Command *cmd)
   * For pipes
   */
   pipeExec(cmd);
-
-
-  //printf("\n");
   //DebugPrintCommand(parse_result, cmd);
 }
 
@@ -130,9 +127,10 @@ void execComm(Command *cmd)
   }
 }
 
-void sigtest(int sig) {
-  if(sig == SIGINT) return;
-
+void sigtest(int sig)
+{
+  if (sig == SIGINT)
+    return;
 }
 
 void exComm(Command *cmd)
@@ -157,8 +155,11 @@ void exComm(Command *cmd)
   }
   else
   {
-    if(cmd->background){return;}
-    // No waiting for child 
+    if (cmd->background)
+    {
+      return;
+    }
+    // No waiting for child
     else
     {
       signal(SIGINT, sigtest);
@@ -170,67 +171,96 @@ void exComm(Command *cmd)
 
 void pipeExec(Command *cmd)
 {
-  int piperd[2]; 
-  pid_t pid, pid2;
+  int i, cmds = 0, numberOfPipes = 0;
+  pid_t pid;
+  int pipeFD[2 * numberOfPipes];
+  // Head Node to count number of pipes
+  Pgm *current = cmd->pgm;
 
-  if (pipe(piperd) < 0)
+  // Counting number of pipes
+  while (current->next != NULL)
   {
-    printf("\nPipe could not be initialized");
-    return;
+    numberOfPipes++;
+    current = current->next;
   }
-  pid = fork();
-  if (pid < 0)
-  {
-    printf("\nFork 1 failed");
-    return;
-  }
-  else if (pid == 0)
-  {
-    // First child executing
-    close(piperd[0]);
-    dup2(piperd[1], STDOUT_FILENO);
-    close(piperd[1]);
 
-    if(execvp(*cmd->pgm->pgmlist, cmd->pgm->pgmlist) < 0)
+  // Reassign current to the first node
+  current = cmd->pgm;
+
+  // ! RÄTT
+  for (i = 0; i < numberOfPipes; i++)
+  {
+    if (pipe(pipeFD + i * 2) < 0)
     {
-      printf("\nExecution failed on child 1");
-      exit(0);
-    }
-  }
-  else {
-    // Parent executing
-    pid2 = fork();
-    if (pid2 < 0)
-    {
-      printf("\nFork 2 failed");
+      printf("\n Failed creating pipes");
       return;
     }
+  }
 
-    // Second child executing
-    else if (pid2 == 0) 
+  do
+  {
+    pid = fork();
+
+    if (pid < 0)
     {
-      close(piperd[1]);
-      dup2(piperd[0], STDIN_FILENO);
-      close(piperd[0]);
+      printf("\n Failed to fork");
+    }
+    // Child process
+    if (pid == 0)
+    {
 
-      if(execvp(*cmd->pgm->pgmlist, cmd->pgm->pgmlist) < 0)
+      /* 
+      * If we need to redirect the stdout to a pipe read end.
+      * Will not be done on the last command since we want to send stdout to terminal.
+      */
+      if (cmds != 0)
       {
-        printf("\nExecution failed on child 2");
-        exit(0);
+        if (dup2(pipeFD[cmds * 2 - 1], STDOUT_FILENO) < 0)
+        {
+          perror("\n Error duplicating input");
+        }
       }
 
+      /* 
+      * If we need to redirect the stdin to a pipe write end.
+      * Will not be done to the first command entered in the terminal. 
+      */
+      if (cmds != numberOfPipes)
+      {
+        if (dup2(pipeFD[cmds * 2], STDIN_FILENO) < 0)
+        {
+          printf("\n Error duplicating output");
+        }
+      }
+
+      // Close all file descriptors
+      for (i = 0; i < 2 * numberOfPipes; i++)
+      {
+        close(pipeFD[i]);
+      }
+
+      if (execvp(*current->pgmlist, current->pgmlist) < 0)
+      {
+        printf("\nError executing");
+        exit(0);
+      }
     }
-    else {
-      printf("\nFörsta wait\n");
-      waitpid(pid, NULL, 0);
-      printf("\nAndra wait\n");
-      int a = waitpid(pid2, NULL, 0);
-      printf("\n%d", a);
-    }
+
+    // ! Have to be here to move the loop forward
+    current = current->next;
+    cmds++;
+  } while (cmds < numberOfPipes + 1);
+
+  for (i = 0; i < 2 * numberOfPipes; i++)
+  {
+    close(pipeFD[i]);
+  }
+
+  for (i = 0; i < numberOfPipes + 1; i++)
+  {
+    waitpid(pid, NULL, 0);
   }
 }
-
-
 
 /* 
  * Print a Command structure as returned by parse on stdout. 
