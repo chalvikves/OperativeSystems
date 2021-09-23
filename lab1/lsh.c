@@ -25,6 +25,8 @@
 #include "parse.h"
 #include <unistd.h>
 #include <signal.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #define TRUE 1
 #define FALSE 0
@@ -38,6 +40,7 @@ void execComm(Command *);
 void exComm(Command *);
 void pipeExec(Command *);
 void sigtest(int);
+void redirectExec(Command *);
 
 int main(void)
 {
@@ -81,25 +84,29 @@ int main(void)
 void RunCommand(int parse_result, Command *cmd)
 {
   /* 
-  *  For easy system calls without arguments
+  * For easy system calls without arguments
   */
   //system(*cmd->pgm->pgmlist);
 
   /* 
-  *  For system calls with and without arguments
+  * For system calls with and without arguments
   */
   //execComm(cmd);
 
   /* 
-  For system calls in the background
-    ! Doesn't work
+  * For system calls in the background
   */
   //exComm(cmd);
 
   /* 
   * For pipes
   */
-  pipeExec(cmd);
+  //pipeExec(cmd);
+
+  /* 
+  * For redirect
+  */
+  redirectExec(cmd);
   //DebugPrintCommand(parse_result, cmd);
 }
 
@@ -260,6 +267,71 @@ void pipeExec(Command *cmd)
   {
     waitpid(pid, NULL, 0);
   }
+}
+
+void redirectExec(Command *cmd)
+{
+  int rFile, oFile;
+  pid_t pid, pid2;
+
+  pid = fork();
+
+  if(pid < 0)
+  {
+    perror("pid");
+  }
+
+  if (pid == 0)
+  {
+    if (cmd->rstdin != NULL)
+    {
+
+      if (cmd->rstdout != NULL)
+      {
+
+        if ((oFile = open(cmd->rstdout, O_WRONLY | O_CREAT | O_TRUNC,
+                          S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)) < 0)
+        {
+          perror("open create");
+          exit(0);
+        }
+        if(dup2(oFile, STDOUT_FILENO) < 0)
+        {
+          perror("dup2");
+        }
+        close(oFile);
+      }
+
+      if ((rFile = open(cmd->rstdin, O_RDONLY)) < 0)
+      {
+        perror("open");
+        exit(0);
+      }
+
+      if (dup2(rFile, STDIN_FILENO) < 0)
+      {
+        perror("dup2");
+      }
+      close(rFile);
+      
+      pid2 = fork();
+      if (pid2 < 0)
+      {
+        perror("fork");
+      }
+
+      if (pid2 == 0)
+      {
+        execvp(*cmd->pgm->pgmlist, cmd->pgm->pgmlist);
+      }
+      else
+      {
+        waitpid(pid, NULL, 0);
+      }
+    }
+  }
+  waitpid(pid, NULL, 0);
+  
 }
 
 /* 
