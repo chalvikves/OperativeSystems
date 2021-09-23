@@ -44,17 +44,16 @@ void redirectExec(Command *);
 void handle_sigint_and_sigchld(int);
 pid_t child_pid = -1;
 
-
 int main(void)
 {
   Command cmd;
   int parse_result;
   // added to make sure ctrl+c does not work in the beginning. If this is the track we want to go, we need to set the handler to SIG_IGN through  the sa_handler function instead:
-  
+
   /* struct sigaction sa;
   sa.sa_handler = SIG_IGN;   // more details at flylib.com/books/en/4.443.1.96/1/
   */
-  
+
   // sigaction(SIGINT, SIG_IGN, NULL);
 
   //added to handle ctrl c and children from the start
@@ -112,7 +111,7 @@ void RunCommand(int parse_result, Command *cmd)
   /* 
   * For system calls in the background
   */
-  exComm(cmd);
+  //exComm(cmd);
 
   /* 
   * For pipes
@@ -150,17 +149,22 @@ void execComm(Command *cmd)
   }
 }
 
-void handle_sigint_and_sigchld(int sig) {
-  if(sig == SIGINT){
-    if(child_pid != -1){
+void handle_sigint_and_sigchld(int sig)
+{
+  if (sig == SIGINT)
+  {
+    if (child_pid != -1)
+    {
       kill(child_pid, SIGTERM);
       child_pid = -1;
-
     }
   }
-  if(sig == SIGCHLD){
+  if (sig == SIGCHLD)
+  {
     // see if any child processes have terminated. If so, the parent will remove them from the process table
-    while (waitpid((pid_t)(-1), 0, WNOHANG) > 0) {}
+    while (waitpid((pid_t)(-1), 0, WNOHANG) > 0)
+    {
+    }
   }
 }
 
@@ -168,15 +172,18 @@ void exComm(Command *cmd)
 {
   int status;
   pid_t pid;
-  
-  if(strcmp("exit", *cmd->pgm->pgmlist) == 0){
+
+  if (strcmp("exit", *cmd->pgm->pgmlist) == 0)
+  {
     exit(1);
   }
-  if(strcmp("cd", *cmd->pgm->pgmlist) == 0){
-    // Took inspiration from print_pgm function. 
+  if (strcmp("cd", *cmd->pgm->pgmlist) == 0)
+  {
+    // Took inspiration from print_pgm function.
     char **pl = cmd->pgm->pgmlist;
-    char* path = *(pl+1);
-    if(chdir(path) != 0){
+    char *path = *(pl + 1);
+    if (chdir(path) != 0)
+    {
       printf("Error in path: %s", path);
     }
     return;
@@ -214,15 +221,6 @@ void exComm(Command *cmd)
     }
   }
 }
-
-
-
-
-
-
-
-
-
 
 void pipeExec(Command *cmd)
 {
@@ -324,7 +322,7 @@ void redirectExec(Command *cmd)
 
   pid = fork();
 
-  if(pid < 0)
+  if (pid < 0)
   {
     perror("pid");
   }
@@ -333,22 +331,6 @@ void redirectExec(Command *cmd)
   {
     if (cmd->rstdin != NULL)
     {
-
-      if (cmd->rstdout != NULL)
-      {
-
-        if ((oFile = open(cmd->rstdout, O_WRONLY | O_CREAT | O_TRUNC,
-                          S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)) < 0)
-        {
-          perror("open create");
-          exit(0);
-        }
-        if(dup2(oFile, STDOUT_FILENO) < 0)
-        {
-          perror("dup2");
-        }
-        close(oFile);
-      }
 
       if ((rFile = open(cmd->rstdin, O_RDONLY)) < 0)
       {
@@ -361,7 +343,7 @@ void redirectExec(Command *cmd)
         perror("dup2");
       }
       close(rFile);
-      
+
       pid2 = fork();
       if (pid2 < 0)
       {
@@ -377,9 +359,44 @@ void redirectExec(Command *cmd)
         waitpid(pid, NULL, 0);
       }
     }
+
+    if (cmd->rstdout != NULL)
+    {
+
+      if ((oFile = open(cmd->rstdout, O_WRONLY | O_CREAT | O_TRUNC,
+                        S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)) < 0)
+      {
+        perror("open create");
+        exit(0);
+      }
+      if (dup2(oFile, STDOUT_FILENO) < 0)
+      {
+        perror("dup2");
+      }
+      close(oFile);
+
+      pid2 = fork();
+      if (pid2 < 0)
+      {
+        perror("fork");
+      }
+
+      if (pid2 == 0)
+      {
+        if (execvp(*cmd->pgm->pgmlist, cmd->pgm->pgmlist) < 0)
+        {
+          perror("execvp");
+        }
+      }
+      else
+      {
+        waitpid(pid, NULL, 0);
+      }
+    }
   }
+  fclose(stdout);
+  fclose(stdin);
   waitpid(pid, NULL, 0);
-  
 }
 
 /* 
