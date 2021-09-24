@@ -318,7 +318,7 @@ void pipeExec(Command *cmd)
 void redirectExec(Command *cmd)
 {
   int rFile, oFile;
-  pid_t pid, pid2;
+  pid_t pid;
 
   pid = fork();
 
@@ -343,21 +343,6 @@ void redirectExec(Command *cmd)
         perror("dup2");
       }
       close(rFile);
-
-      pid2 = fork();
-      if (pid2 < 0)
-      {
-        perror("fork");
-      }
-
-      if (pid2 == 0)
-      {
-        execvp(*cmd->pgm->pgmlist, cmd->pgm->pgmlist);
-      }
-      else
-      {
-        waitpid(pid, NULL, 0);
-      }
     }
 
     if (cmd->rstdout != NULL)
@@ -374,28 +359,13 @@ void redirectExec(Command *cmd)
         perror("dup2");
       }
       close(oFile);
-
-      pid2 = fork();
-      if (pid2 < 0)
-      {
-        perror("fork");
-      }
-
-      if (pid2 == 0)
-      {
-        if (execvp(*cmd->pgm->pgmlist, cmd->pgm->pgmlist) < 0)
-        {
-          perror("execvp");
-        }
-      }
-      else
-      {
-        waitpid(pid, NULL, 0);
-      }
+    }
+    if (execvp(*cmd->pgm->pgmlist, cmd->pgm->pgmlist) < 0)
+    {
+      perror("execvp");
     }
   }
-  fclose(stdout);
-  fclose(stdin);
+
   waitpid(pid, NULL, 0);
 }
 
