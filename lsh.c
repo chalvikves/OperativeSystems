@@ -41,6 +41,7 @@ void exComm(Command *);
 void pipeExec(Command *);
 void sigtest(int);
 void redirectExec(Command *);
+void completeExec(Command *);
 void handle_sigint(int);
 pid_t child_pid = -1;
 
@@ -106,7 +107,7 @@ void RunCommand(int parse_result, Command *cmd)
   /* 
   * For system calls in the background
   */
-  exComm(cmd);
+  //exComm(cmd);
 
   /* 
   * For pipes
@@ -117,6 +118,11 @@ void RunCommand(int parse_result, Command *cmd)
   * For redirect
   */
   //redirectExec(cmd);
+
+  /*
+  * For everything
+  */
+  completeExec(cmd);
   //DebugPrintCommand(parse_result, cmd);
 }
 
@@ -310,7 +316,7 @@ void pipeExec(Command *cmd)
 
 void redirectExec(Command *cmd)
 {
-  int rFile, oFile;
+  int iFile, oFile;
   pid_t pid;
 
   pid = fork();
@@ -325,17 +331,17 @@ void redirectExec(Command *cmd)
     if (cmd->rstdin != NULL)
     {
 
-      if ((rFile = open(cmd->rstdin, O_RDONLY)) < 0) // not sure but maybe add more error stuff here?
+      if ((iFile = open(cmd->rstdin, O_RDONLY)) < 0) // not sure but maybe add more error stuff here?
       {
         perror("open");
         exit(0);
       }
 
-      if (dup2(rFile, STDIN_FILENO) < 0)
+      if (dup2(iFile, STDIN_FILENO) < 0)
       {
         perror("dup2");
       }
-      close(rFile);
+      close(iFile);
     }
 
     if (cmd->rstdout != NULL)
@@ -364,9 +370,26 @@ void redirectExec(Command *cmd)
 
 void completeExec(Command *cmd)
 {
-  int rFile, oFile;
+  int iFile, oFile;
   pid_t pid;
 
+  //Handle exit and cd
+  if (strcmp("exit", *cmd->pgm->pgmlist) == 0)
+  {
+    exit(1);
+  }
+  if (strcmp("cd", *cmd->pgm->pgmlist) == 0)
+  {
+    // Took inspiration from print_pgm function.
+    char **pl = cmd->pgm->pgmlist;
+    char *path = *(pl + 1);
+    if (chdir(path) != 0)
+    {
+      printf("Error in path: %s", path);
+    }
+    return;
+  }
+  //Handle I/O (FORK ONCE)
   pid = fork();
 
   if (pid < 0)
@@ -376,21 +399,23 @@ void completeExec(Command *cmd)
 
   if (pid == 0)
   {
-    // HANDLE REDIRECTS
+    /* used to change the gid of the children, to make sure they do not receive the SIGINT that is sent to the parent by pressing CTRL-C.
+      this way, the parent must accept the SIGINT and then send an appropriate signal only to the child that is supposed to be affected by the SIGINT.*/
+    setsid();
+
     if (cmd->rstdin != NULL)
     {
-
-      if ((rFile = open(cmd->rstdin, O_RDONLY)) < 0) // not sure but maybe add more error stuff here?
+      if ((iFile = open(cmd->rstdin, O_RDONLY)) < 0) // not sure but maybe add more error stuff here?
       {
         perror("open");
         exit(0);
       }
 
-      if (dup2(rFile, STDIN_FILENO) < 0)
+      if (dup2(iFile, STDIN_FILENO) < 0)
       {
         perror("dup2");
       }
-      close(rFile);
+      close(iFile);
     }
 
     if (cmd->rstdout != NULL)
@@ -408,102 +433,34 @@ void completeExec(Command *cmd)
       }
       close(oFile);
     }
+    //Handle pipes (FORK ONCE PER PIPE +1) (Parent waits for all of them to finish, wait(NULL))
+    
 
-    // HANDLE PIPES
 
-    int i, cmds = 0, numberOfPipes = 0;
-    int pipeFD[2 * numberOfPipes];
-    // Head Node to count number of pipes
-    Pgm *current = cmd->pgm;
 
-    // Counting number of pipes
-    while (current->next != NULL)
+
+
+
+    //Handle basic args inside loop 
+  }
+  // Handle background ---- POLICY: Everything waits for everything, exept top level which can choose.
+  else
     {
-      numberOfPipes++;
-      current = current->next;
-    }
-
-    // Reassign current to the first node
-    current = cmd->pgm;
-
-    // Create pipes
-    for (i = 0; i < numberOfPipes; i++)
-    {
-      if (pipe(pipeFD + i * 2) < 0)
+      if (cmd->background)
       {
-        printf("\n Failed creating pipes");
+        return;
+      }
+      // No waiting for child
+      else
+      {
+        child_pid = pid;
+        waitpid(pid, &status, 0);
+        child_pid = -1;
         return;
       }
     }
-
-    // Fork once per command. Redirect I/O into pipes where apropriate
-    do
-    {
-      pid = fork();
-
-      if (pid < 0)
-      {
-        printf("\n Failed to fork");
-      }
-      // Child process
-      if (pid == 0)
-      {
-
-        /* 
-        * If we need to redirect the stdout to a pipe read end.
-        * Will not be done on the last command since we want to send stdout to terminal.
-        */
-        if (cmds != 0)
-        {
-          if (dup2(pipeFD[cmds * 2 - 1], STDOUT_FILENO) < 0)
-          {
-            perror("\n Error duplicating input");
-          }
-        }
-
-        /* 
-        * If we need to redirect the stdin to a pipe write end.
-        * Will not be done to the first command entered in the terminal. 
-        */
-        if (cmds != numberOfPipes)
-        {
-          if (dup2(pipeFD[cmds * 2], STDIN_FILENO) < 0)
-          {
-            printf("\n Error duplicating output");
-          }
-        }
-
-        // Close all file descriptors
-        for (i = 0; i < 2 * numberOfPipes; i++)
-        {
-          close(pipeFD[i]);
-        }
-
-        // TODO: EXECUTE COMMAND FOR EACH CHILD HERE (COPY ONLY WHAT THE CHILD SHOULD DO. PARENT BELOW)
-
-        // if (execvp(*current->pgmlist, current->pgmlist) < 0)
-        // {
-        //   printf("\nError executing");
-        //   exit(0);
-        // }
-      }
-
-      // ! Have to be here to move the loop forward
-      current = current->next;
-      cmds++;
-    } while (cmds < numberOfPipes + 1);
-
-    for (i = 0; i < 2 * numberOfPipes; i++)
-    {
-      close(pipeFD[i]);
-    }
-
-    // TODO: Copy code for parent here, like background and such! 
-    for (i = 0; i < numberOfPipes + 1; i++)
-    {
-      waitpid(pid, NULL, 0);
-    }
-  }
+  
+  
 }
 
 
