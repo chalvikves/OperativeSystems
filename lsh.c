@@ -180,7 +180,7 @@ void exComm(Command *cmd)
   if (pid == -1)
   {
     printf("\nFork failed");
-    return;
+    exit(0);
   }
   else if (pid == 0)
   {
@@ -205,12 +205,12 @@ void exComm(Command *cmd)
     }
     else{
       if (execvp(*cmd->pgm->pgmlist, cmd->pgm->pgmlist) < 0)
-    {
-      printf("Could not execute the command\n");
+      {
+        printf("Could not execute the command\n");
+      }
+      exit(0);
     }
-    //exit(0);
-    }
-
+    exit(0);
     
   }
   else
@@ -307,8 +307,8 @@ int pipeExec(Command *cmd)
       if (execvp(*current->pgmlist, current->pgmlist) < 0)
       {
         printf("\nError executing");
-        exit(0);
       }
+      exit(0);
     }
 
     // ! Have to be here to move the loop forward
@@ -355,7 +355,7 @@ int redirectExec(Command *cmd)
       if (dup2(iFile, STDIN_FILENO) < 0)
       {
         perror("dup2");
-        return 0;
+        exit(0);
       }
       close(iFile);
     }
@@ -372,15 +372,17 @@ int redirectExec(Command *cmd)
       if (dup2(oFile, STDOUT_FILENO) < 0)
       {
         perror("dup2");
-        return 0;
+        exit(0);
       }
       close(oFile);
     }
     if (execvp(*cmd->pgm->pgmlist, cmd->pgm->pgmlist) < 0)
     {
       perror("execvp");
-      return 0;
+      exit(0);
     }
+    
+    exit(0);
   }
 
   waitpid(pid, NULL, 0);
@@ -389,7 +391,7 @@ int redirectExec(Command *cmd)
 
 void completeExec(Command *cmd)
 {
-  int iFile, oFile;
+  int iFile, oFile, status;
   pid_t pid;
 
   //Handle exit and cd
