@@ -116,29 +116,6 @@ void RunCommand(int parse_result, Command *cmd)
   //DebugPrintCommand(parse_result, cmd);
 }
 
-void execComm(Command *cmd)
-{
-  pid_t pid = fork();
-
-  if (pid == -1)
-  {
-    printf("\nFork failed");
-    return;
-  }
-  else if (pid == 0)
-  {
-    if (execvp(*cmd->pgm->pgmlist, cmd->pgm->pgmlist) < 0)
-    {
-      printf("\nCould not execute the command");
-    }
-    exit(0);
-  }
-  else
-  {
-    wait(NULL);
-    return;
-  }
-}
 
 void handle_sigint(int sig)
 {
@@ -172,14 +149,14 @@ void exComm(Command *cmd)
     char *path = *(pl + 1);
     if (chdir(path) != 0)
     {
-      printf("Error in path: %s", path);
+      printf("Error in path: %s\n", path);
     }
     return;
   }
   pid = fork();
   if (pid == -1)
   {
-    printf("\nFork failed");
+    printf("Fork failed\n");
     exit(0);
   }
   else if (pid == 0)
@@ -191,7 +168,7 @@ void exComm(Command *cmd)
     {
       if(redirectExec(cmd) == 0)
       {
-        perror("Redirect failed");
+        perror("Redirect failed\n");
         exit(0);
       }
     }
@@ -199,7 +176,7 @@ void exComm(Command *cmd)
     {
       if(pipeExec(cmd) == 0)
       {
-        perror("Pipe failed");
+        perror("Pipe failed\n");
         exit(0);
       }
     }
@@ -253,7 +230,7 @@ int pipeExec(Command *cmd)
   {
     if (pipe(pipeFD + i * 2) < 0)
     {
-      printf("\n Failed creating pipes");
+      printf("Failed creating pipes\n ");
       return 0;
     }
   }
@@ -265,7 +242,7 @@ int pipeExec(Command *cmd)
 
     if (pid < 0)
     {
-      printf("\n Failed to fork");
+      printf("Failed to fork\n");
       return 0;
     }
     // Child process
@@ -280,7 +257,7 @@ int pipeExec(Command *cmd)
       {
         if (dup2(pipeFD[cmds * 2 - 1], STDOUT_FILENO) < 0)
         {
-          perror("\n Error duplicating input");
+          perror("Error duplicating input\n");
           return 0;
         }
       }
@@ -293,7 +270,7 @@ int pipeExec(Command *cmd)
       {
         if (dup2(pipeFD[cmds * 2], STDIN_FILENO) < 0)
         {
-          printf("\n Error duplicating output");
+          printf("Error duplicating output\n ");
           return 0;
         }
       }
@@ -306,7 +283,7 @@ int pipeExec(Command *cmd)
 
       if (execvp(*current->pgmlist, current->pgmlist) < 0)
       {
-        printf("\nError executing");
+        printf("Error executing\n");
       }
       exit(0);
     }
@@ -388,105 +365,6 @@ int redirectExec(Command *cmd)
   waitpid(pid, NULL, 0);
   return 1;
 }
-
-void completeExec(Command *cmd)
-{
-  int iFile, oFile, status;
-  pid_t pid;
-
-  //Handle exit and cd
-  if (strcmp("exit", *cmd->pgm->pgmlist) == 0)
-  {
-    exit(1);
-  }
-  if (strcmp("cd", *cmd->pgm->pgmlist) == 0)
-  {
-    // Took inspiration from print_pgm function.
-    char **pl = cmd->pgm->pgmlist;
-    char *path = *(pl + 1);
-    if (chdir(path) != 0)
-    {
-      printf("Error in path: %s", path);
-    }
-    return;
-  }
-  //Handle I/O (FORK ONCE)
-  pid = fork();
-
-  if (pid < 0)
-  {
-    perror("pid");
-  }
-
-  if (pid == 0)
-  {
-    /* used to change the gid of the children, to make sure they do not receive the SIGINT that is sent to the parent by pressing CTRL-C.
-      this way, the parent must accept the SIGINT and then send an appropriate signal only to the child that is supposed to be affected by the SIGINT.*/
-    setsid();
-
-    if (cmd->rstdin != NULL)
-    {
-      if ((iFile = open(cmd->rstdin, O_RDONLY)) < 0) // not sure but maybe add more error stuff here?
-      {
-        perror("open");
-        exit(0);
-      }
-
-      if (dup2(iFile, STDIN_FILENO) < 0)
-      {
-        perror("dup2");
-      }
-      close(iFile);
-    }
-
-    if (cmd->rstdout != NULL)
-    {
-
-      if ((oFile = open(cmd->rstdout, O_WRONLY | O_CREAT | O_TRUNC,
-                        S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)) < 0)
-      {
-        perror("open create");
-        exit(0);
-      }
-      if (dup2(oFile, STDOUT_FILENO) < 0)
-      {
-        perror("dup2");
-      }
-      close(oFile);
-    }
-    //Handle pipes (FORK ONCE PER PIPE +1) (Parent waits for all of them to finish, wait(NULL))
-    
-
-
-
-
-
-
-    //Handle basic args inside loop 
-  }
-  // Handle background ---- POLICY: Everything waits for everything, exept top level which can choose.
-  else
-    {
-      if (cmd->background)
-      {
-        return;
-      }
-      // No waiting for child
-      else
-      {
-        child_pid = pid;
-        waitpid(pid, &status, 0);
-        child_pid = -1;
-        return;
-      }
-    }
-  
-  
-}
-
-
-
-
 
 
 /* 
