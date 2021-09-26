@@ -184,8 +184,8 @@ void exComm(Command *cmd)
   }
   else if (pid == 0)
   {
-    // used to change the gid of the children, to make sure they do not receive the SIGINT that is sent to the parent by pressing CTRL-C.
-    // this way, the parent must accept the SIGINT and then send an appropriate signal only to the child that is supposed to be affected by the SIGINT.
+    /* used to change the gid of the children, to make sure they do not receive the SIGINT that is sent to the parent by pressing CTRL-C.
+      this way, the parent must accept the SIGINT and then send an appropriate signal only to the child that is supposed to be affected by the SIGINT.*/
     setsid();
     if ((cmd->rstdin != NULL) || (cmd->rstdout != NULL))
     {
@@ -206,7 +206,7 @@ void exComm(Command *cmd)
     else{
       if (execvp(*cmd->pgm->pgmlist, cmd->pgm->pgmlist) < 0)
     {
-      printf("\nCould not execute the command");
+      printf("Could not execute the command\n");
     }
     //exit(0);
     }
@@ -248,7 +248,7 @@ int pipeExec(Command *cmd)
   // Reassign current to the first node
   current = cmd->pgm;
 
-  // ! RÄTT
+  // Create pipes
   for (i = 0; i < numberOfPipes; i++)
   {
     if (pipe(pipeFD + i * 2) < 0)
@@ -258,6 +258,7 @@ int pipeExec(Command *cmd)
     }
   }
 
+  // Fork once per command. Redirect I/O into pipes where apropriate
   do
   {
     pid = fork();
@@ -329,7 +330,7 @@ int pipeExec(Command *cmd)
 
 int redirectExec(Command *cmd)
 {
-  int rFile, oFile;
+  int iFile, oFile;
   pid_t pid;
 
   pid = fork();
@@ -345,18 +346,18 @@ int redirectExec(Command *cmd)
     if (cmd->rstdin != NULL)
     {
 
-      if ((rFile = open(cmd->rstdin, O_RDONLY)) < 0)
+      if ((iFile = open(cmd->rstdin, O_RDONLY)) < 0) // not sure but maybe add more error stuff here?
       {
         perror("open");
         exit(0);
       }
 
-      if (dup2(rFile, STDIN_FILENO) < 0)
+      if (dup2(iFile, STDIN_FILENO) < 0)
       {
         perror("dup2");
         return 0;
       }
-      close(rFile);
+      close(iFile);
     }
 
     if (cmd->rstdout != NULL)
@@ -385,6 +386,106 @@ int redirectExec(Command *cmd)
   waitpid(pid, NULL, 0);
   return 1;
 }
+
+void completeExec(Command *cmd)
+{
+  int iFile, oFile;
+  pid_t pid;
+
+  //Handle exit and cd
+  if (strcmp("exit", *cmd->pgm->pgmlist) == 0)
+  {
+    exit(1);
+  }
+  if (strcmp("cd", *cmd->pgm->pgmlist) == 0)
+  {
+    // Took inspiration from print_pgm function.
+    char **pl = cmd->pgm->pgmlist;
+    char *path = *(pl + 1);
+    if (chdir(path) != 0)
+    {
+      printf("Error in path: %s", path);
+    }
+    return;
+  }
+  //Handle I/O (FORK ONCE)
+  pid = fork();
+
+  if (pid < 0)
+  {
+    perror("pid");
+  }
+
+  if (pid == 0)
+  {
+    /* used to change the gid of the children, to make sure they do not receive the SIGINT that is sent to the parent by pressing CTRL-C.
+      this way, the parent must accept the SIGINT and then send an appropriate signal only to the child that is supposed to be affected by the SIGINT.*/
+    setsid();
+
+    if (cmd->rstdin != NULL)
+    {
+      if ((iFile = open(cmd->rstdin, O_RDONLY)) < 0) // not sure but maybe add more error stuff here?
+      {
+        perror("open");
+        exit(0);
+      }
+
+      if (dup2(iFile, STDIN_FILENO) < 0)
+      {
+        perror("dup2");
+      }
+      close(iFile);
+    }
+
+    if (cmd->rstdout != NULL)
+    {
+
+      if ((oFile = open(cmd->rstdout, O_WRONLY | O_CREAT | O_TRUNC,
+                        S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)) < 0)
+      {
+        perror("open create");
+        exit(0);
+      }
+      if (dup2(oFile, STDOUT_FILENO) < 0)
+      {
+        perror("dup2");
+      }
+      close(oFile);
+    }
+    //Handle pipes (FORK ONCE PER PIPE +1) (Parent waits for all of them to finish, wait(NULL))
+    
+
+
+
+
+
+
+    //Handle basic args inside loop 
+  }
+  // Handle background ---- POLICY: Everything waits for everything, exept top level which can choose.
+  else
+    {
+      if (cmd->background)
+      {
+        return;
+      }
+      // No waiting for child
+      else
+      {
+        child_pid = pid;
+        waitpid(pid, &status, 0);
+        child_pid = -1;
+        return;
+      }
+    }
+  
+  
+}
+
+
+
+
+
 
 /* 
  * Print a Command structure as returned by parse on stdout. 
