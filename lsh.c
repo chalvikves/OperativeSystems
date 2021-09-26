@@ -35,11 +35,10 @@ void RunCommand(int, Command *);
 void DebugPrintCommand(int, Command *);
 void PrintPgm(Pgm *);
 void stripwhite(char *);
-// My own
-void execComm(Command *);
-void exComm(Command *);
+
+// New functions
+void executeCommands(Command *);
 int pipeExec(Command *);
-void sigtest(int);
 int redirectExec(Command *);
 void handle_sigint(int);
 pid_t child_pid = -1;
@@ -93,26 +92,11 @@ int main(void)
  */
 void RunCommand(int parse_result, Command *cmd)
 {
-
   /* 
-  * For system calls with and without arguments
+  * MAIN COMMAND
   */
-  //execComm(cmd);
-
-  /* 
-  * For system calls in the background
-  ! MAIN COMMAND
-  */
-  exComm(cmd);
-  /* 
-  * For pipes
-  */
-  //pipeExec(cmd);
-
-  /* 
-  * For redirect
-  */
-  //redirectExec(cmd);
+  executeCommands(cmd);
+ 
   //DebugPrintCommand(parse_result, cmd);
 }
 
@@ -133,7 +117,7 @@ void handle_sigint(int sig)
   
 }
 
-void exComm(Command *cmd)
+void executeCommands(Command *cmd)
 {
   int status;
   pid_t pid;
