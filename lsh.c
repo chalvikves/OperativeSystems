@@ -38,30 +38,25 @@ void stripwhite(char *);
 // My own
 void execComm(Command *);
 void exComm(Command *);
-void pipeExec(Command *);
+int pipeExec(Command *);
 void sigtest(int);
-void redirectExec(Command *);
-void handle_sigint_and_sigchld(int);
+int redirectExec(Command *);
+void handle_sigint(int);
 pid_t child_pid = -1;
 
 int main(void)
 {
   Command cmd;
   int parse_result;
-  // added to make sure ctrl+c does not work in the beginning. If this is the track we want to go, we need to set the handler to SIG_IGN through  the sa_handler function instead:
-
-  /* struct sigaction sa;
-  sa.sa_handler = SIG_IGN;   // more details at flylib.com/books/en/4.443.1.96/1/
-  */
-
-  // sigaction(SIGINT, SIG_IGN, NULL);
 
   //added to handle ctrl c and children from the start
-  struct sigaction sa;
-  sa.sa_handler = &handle_sigint_and_sigchld;
-  sigaction(SIGINT, &sa, NULL);
-  sigaction(SIGCHLD, &sa, NULL);
-
+  struct sigaction si;
+  si.sa_handler = &handle_sigint;
+  sigaction(SIGINT, &si, NULL);
+  
+  /* Used to make sure no zombies enter the system. The parent ignores the exit codes of the children, and the system immediately 
+    removes them from the system instead of turning them into zombies */
+  signal(SIGCHLD, SIG_IGN);
   while (TRUE)
   {
     char *line;
@@ -98,10 +93,6 @@ int main(void)
  */
 void RunCommand(int parse_result, Command *cmd)
 {
-  /* 
-  * For easy system calls without arguments
-  */
-  //system(*cmd->pgm->pgmlist);
 
   /* 
   * For system calls with and without arguments
@@ -110,9 +101,9 @@ void RunCommand(int parse_result, Command *cmd)
 
   /* 
   * For system calls in the background
+  ! MAIN COMMAND
   */
-  //exComm(cmd);
-
+  exComm(cmd);
   /* 
   * For pipes
   */
@@ -121,7 +112,7 @@ void RunCommand(int parse_result, Command *cmd)
   /* 
   * For redirect
   */
-  redirectExec(cmd);
+  //redirectExec(cmd);
   //DebugPrintCommand(parse_result, cmd);
 }
 
@@ -149,23 +140,20 @@ void execComm(Command *cmd)
   }
 }
 
-void handle_sigint_and_sigchld(int sig)
+void handle_sigint(int sig)
 {
   if (sig == SIGINT)
   {
-    if (child_pid != -1)
+    /* possible race condition here, were the user can send SIGINT before the child_pid variable has been set. However, the result will just be that the SIGINT is ignored.
+      The user can then hit ctrl-c again when the variable has been set. We could solve this using pipes (child waits until parent has set child_pid before execvp).*/
+    if (child_pid != -1) 
     {
       kill(child_pid, SIGTERM);
       child_pid = -1;
+      while (waitpid(-1, 0, WNOHANG) > 0){}
     }
   }
-  if (sig == SIGCHLD)
-  {
-    // see if any child processes have terminated. If so, the parent will remove them from the process table
-    while (waitpid((pid_t)(-1), 0, WNOHANG) > 0)
-    {
-    }
-  }
+  
 }
 
 void exComm(Command *cmd)
@@ -199,11 +187,31 @@ void exComm(Command *cmd)
     // used to change the gid of the children, to make sure they do not receive the SIGINT that is sent to the parent by pressing CTRL-C.
     // this way, the parent must accept the SIGINT and then send an appropriate signal only to the child that is supposed to be affected by the SIGINT.
     setsid();
-    if (execvp(*cmd->pgm->pgmlist, cmd->pgm->pgmlist) < 0)
+    if ((cmd->rstdin != NULL) || (cmd->rstdout != NULL))
+    {
+      if(redirectExec(cmd) == 0)
+      {
+        perror("Redirect failed");
+        exit(0);
+      }
+    }
+    else if(cmd->pgm->next != NULL)
+    {
+      if(pipeExec(cmd) == 0)
+      {
+        perror("Pipe failed");
+        exit(0);
+      }
+    }
+    else{
+      if (execvp(*cmd->pgm->pgmlist, cmd->pgm->pgmlist) < 0)
     {
       printf("\nCould not execute the command");
     }
-    exit(0);
+    //exit(0);
+    }
+
+    
   }
   else
   {
@@ -222,7 +230,7 @@ void exComm(Command *cmd)
   }
 }
 
-void pipeExec(Command *cmd)
+int pipeExec(Command *cmd)
 {
   int i, cmds = 0, numberOfPipes = 0;
   pid_t pid;
@@ -246,7 +254,7 @@ void pipeExec(Command *cmd)
     if (pipe(pipeFD + i * 2) < 0)
     {
       printf("\n Failed creating pipes");
-      return;
+      return 0;
     }
   }
 
@@ -257,6 +265,7 @@ void pipeExec(Command *cmd)
     if (pid < 0)
     {
       printf("\n Failed to fork");
+      return 0;
     }
     // Child process
     if (pid == 0)
@@ -271,6 +280,7 @@ void pipeExec(Command *cmd)
         if (dup2(pipeFD[cmds * 2 - 1], STDOUT_FILENO) < 0)
         {
           perror("\n Error duplicating input");
+          return 0;
         }
       }
 
@@ -283,6 +293,7 @@ void pipeExec(Command *cmd)
         if (dup2(pipeFD[cmds * 2], STDIN_FILENO) < 0)
         {
           printf("\n Error duplicating output");
+          return 0;
         }
       }
 
@@ -313,9 +324,10 @@ void pipeExec(Command *cmd)
   {
     waitpid(pid, NULL, 0);
   }
+  return 1;
 }
 
-void redirectExec(Command *cmd)
+int redirectExec(Command *cmd)
 {
   int rFile, oFile;
   pid_t pid;
@@ -325,6 +337,7 @@ void redirectExec(Command *cmd)
   if (pid < 0)
   {
     perror("pid");
+    return 0;
   }
 
   if (pid == 0)
@@ -341,6 +354,7 @@ void redirectExec(Command *cmd)
       if (dup2(rFile, STDIN_FILENO) < 0)
       {
         perror("dup2");
+        return 0;
       }
       close(rFile);
     }
@@ -357,16 +371,19 @@ void redirectExec(Command *cmd)
       if (dup2(oFile, STDOUT_FILENO) < 0)
       {
         perror("dup2");
+        return 0;
       }
       close(oFile);
     }
     if (execvp(*cmd->pgm->pgmlist, cmd->pgm->pgmlist) < 0)
     {
       perror("execvp");
+      return 0;
     }
   }
 
   waitpid(pid, NULL, 0);
+  return 1;
 }
 
 /* 
