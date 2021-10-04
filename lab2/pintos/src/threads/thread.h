@@ -92,7 +92,9 @@ struct thread
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
-
+    int64_t blocked_until;		/* Used to store at what value of ticks the thread
+					   should change state from BLOCKED to READY. */
+    bool isSleeping;
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
