@@ -31,11 +31,18 @@ void receiverTask(void *);
 void senderPriorityTask(void *);
 void receiverPriorityTask(void *);
 
+struct semaphore waitingToTransfer[2];
+struct semaphore prioWaitingToTransfer[2];
+int waiters[2];
+int prioWaiters[2];
+int runningTasks;
+int currentDirection;
+
 
 void oneTask(task_t task);/*Task requires to use the bus and executes methods below*/
-	void getSlot(task_t task); /* task tries to use slot on the bus */
-	void transferData(task_t task); /* task processes data on the bus either sending or receiving based on the direction*/
-	void leaveSlot(task_t task); /* task release the slot */
+void getSlot(task_t task); /* task tries to use slot on the bus */
+void transferData(task_t task); /* task processes data on the bus either sending or receiving based on the direction*/
+void leaveSlot(task_t task); /* task release the slot */
 
 
 
@@ -44,8 +51,11 @@ void init_bus(void){
  
     random_init((unsigned int)123456789); 
     
-    msg("NOT IMPLEMENTED");
+    //msg("NOT IMPLEMENTED");
     /* FIXME implement */
+    // Initialize needed semaphores
+    sema_init(waitingToTransfer, 1);
+    sema_init(prioWaitingToTransfer, 1);
 
 }
 
@@ -117,16 +127,60 @@ void oneTask(task_t task) {
 void getSlot(task_t task) 
 {
     /* FIXME implement */
+
+    lock.acquire();
+    // Priority tasks
+    if(priority == 1){
+        while((runningTasks == 3)|| (runningTasks > 0 && currentDirection != direction )){
+            prioWaiters[direction]++;
+            prioWaitingToTransfer[direction].wait();
+            prioWaiters[direction]--;
+        }
+    }
+    // non-priority tasks
+    else {
+        while((runningTasks == 3)|| (runningTasks > 0 && currentDirection != direction )){
+            waiters[direction]++;
+            waitingToTransfer[direction].wait();
+            waiters[direction]--;
+        }
+    }
+    
+    runningTasks++;
+    currentDirection = direction;
+    lock.release();
 }
 
 /* task processes data on the bus send/receive */
 void transferData(task_t task) 
 {
     /* FIXME implement */
+    // Sleep for x random ticks with sleep function implemented in Lab 2
+    int x = rand();
+    timer.sleep(x);
 }
 
 /* task releases the slot */
 void leaveSlot(task_t task) 
 {
     /* FIXME implement */
+    
+    lock.acquire();
+    runningTasks--;
+
+    if (prioWaiters[currentDirection] > 0){
+        prioWaitingToTransfer[currentDirection].signal();
+    }
+    else if (prioWaiters[1-currentDirection] > 0){
+        if (runningTasks == 0){
+            prioWaitingToTransfer[1-currentDirection].broadcast();
+        }
+    }
+    else if (waiters[currentDirection] > 0){
+        waitingToTransfer[currentDirection].signal();
+    }
+    else if (cars == 0){
+        waitingToTransfer[1-currentDirection].broadcast();
+    }
+    lock.release();
 }
