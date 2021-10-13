@@ -6,6 +6,7 @@
 #include "threads/malloc.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
+#include "devices/timer.h"
 #include "lib/random.h" //generate random numbers
 
 #define BUS_CAPACITY 3
@@ -31,13 +32,15 @@ void receiverTask(void *);
 void senderPriorityTask(void *);
 void receiverPriorityTask(void *);
 
-struct condition waitingToTransfer[2];
-struct condition prioWaitingToTransfer[2];
-struct lock lock;
-int waiters[2];
-int prioWaiters[2];
-int runningTasks;
-int currentDirection;
+struct semaphore waitingToTransfer;         /* The normal tasks waiting for the bus */
+struct semaphore prioWaitingToTransfer;     /* The prioritized tasks waiting for the bus */
+struct semaphore fullBus;                   /* If the bus is full we need to wait */
+struct lock lock;                           /* The normal lock */
+struct lock prioLock;                       /* The priority lock */
+int waiters[2];                             /* Number of waiters on each side */
+int prioWaiters[2];                         /* Number of prioritized waiters on each side */
+int runningTasks;                           /* Number of tasks in the bus */
+int currentDirection;                       /* The direction of the bus SENDER/RECIEVER */
 
 
 void oneTask(task_t task);/*Task requires to use the bus and executes methods below*/
@@ -52,12 +55,18 @@ void init_bus(void){
  
     random_init((unsigned int)123456789); 
 
-    // Init conditions
-    cond_init(waitingToTransfer);
-    cond_init(prioWaitingToTransfer);
+    // Init semaphores
+    sema_init(&waitingToTransfer, 1);
+    sema_init(&prioWaitingToTransfer, 1);
+    sema_init(&fullBus, BUS_CAPACITY);
 
     // Init locks
-    lock_init(&lock); 
+    lock_init(&lock);
+    lock_init(&prioLock); 
+
+    // Initvariables
+    runningTasks = 0;
+    currentDirection = 0;
 
 }
 
@@ -128,43 +137,69 @@ void oneTask(task_t task) {
 /* task tries to get slot on the bus subsystem */
 void getSlot(task_t task) 
 {
-    /* FIXME implement */
 
-    lock_acquire(&lock);
-    // Priority tasks
-    if(task.priority == 1){
-        while((runningTasks == 3) || (runningTasks > 0 && (currentDirection != task.direction) )){
-            prioWaiters[task.direction]++;
-            cond_wait(&prioWaitingToTransfer[task.direction], &lock);
-            prioWaiters[task.direction]--;
-        }
+    if(currentDirection != task.direction && runningTasks < BUS_CAPACITY)
+    {
+        sema_down(&fullBus);
     }
-    // non-priority tasks
-    else {
-        while((runningTasks == 3) || (runningTasks > 0 && (currentDirection != task.direction) )){
-            waiters[task.direction]++;
-            cond_wait(&waitingToTransfer[task.direction], &lock);
-            waiters[task.direction]--;
+
+    if(task.direction == SENDER){
+        lock_acquire(&lock);
+        // Priority tasks
+        if(task.priority == 1){
+            lock_acquire(&prioLock);
+            while((runningTasks == 3) || (runningTasks > 0 && currentDirection != task.direction )){
+                prioWaiters[task.direction]++;
+                sema_down(&prioWaitingToTransfer);
+                prioWaiters[task.direction]--;
+                sema_up(&prioWaitingToTransfer);
+            }
+            lock_release(&prioLock);
         }
+        // non-priority tasks
+        else {
+            while((runningTasks == 3) || (runningTasks > 0 && currentDirection != task.direction )){
+                waiters[task.direction]++;
+                sema_down(&waitingToTransfer);
+                waiters[task.direction]--;
+            }
+        }
+        runningTasks++;
+        currentDirection = task.direction;
+        lock_release(&lock);
+    } else {
+        lock_acquire(&lock);
+        // Priority tasks
+        if(task.priority == 1){
+            lock_acquire(&prioLock);
+            while((runningTasks == 3) || (runningTasks > 0 && currentDirection != task.direction )){
+                prioWaiters[task.direction]++;
+                sema_down(&prioWaitingToTransfer);
+                prioWaiters[task.direction]--;
+                sema_up(&prioWaitingToTransfer);
+            }
+            lock_release(&prioLock);
+        }
+        // non-priority tasks
+        else {
+            while((runningTasks == 3) || (runningTasks > 0 && currentDirection != task.direction )){
+                waiters[task.direction]++;
+                sema_down(&waitingToTransfer);
+                waiters[task.direction]--;
+            }
+        }
+        runningTasks++;
+        currentDirection = task.direction;
+        lock_release(&lock);
     }
     
-    runningTasks++;
-    currentDirection = task.direction;
-    lock_release(&lock);
+    
 }
 
 /* task processes data on the bus send/receive */
 void transferData(task_t task) 
 {
-    /* FIXME implement */
-    tid_t tid = thread_tid();
-    thread_block();
-    int i = 0;
-    int x = random_ulong() % 100;
-    while(i < x){
-        i++;
-    }
-    thread_unblock(tid);
+    timer_sleep(random_ulong() % 10);
 }
 
 /* task releases the slot */
@@ -175,19 +210,30 @@ void leaveSlot(task_t task)
     lock_acquire(&lock);
     runningTasks--;
 
-    if (prioWaiters[currentDirection] > 0){
-        cond_signal(&prioWaitingToTransfer[currentDirection], &lock);
-    }
-    else if (prioWaiters[1-currentDirection] > 0){
-        if (runningTasks == 0){
-            cond_broadcast(&prioWaitingToTransfer[1-currentDirection], &lock);
+    if (task.priority){
+        if (prioWaiters[currentDirection] > 0){
+        lock_acquire(&prioLock);
+        sema_down(&prioWaitingToTransfer);
+        }
+        else if (prioWaiters[1-currentDirection] > 0){
+            if (runningTasks == 0){
+                sema_up(&prioWaitingToTransfer);
+            }
+        }
+        lock_release(&prioLock);
+    } else {
+        if (waiters[currentDirection] > 0){
+        sema_up(&waitingToTransfer);
+        }
+        else if (runningTasks == 0){
+            sema_up(&waitingToTransfer);
         }
     }
-    else if (waiters[currentDirection] > 0){
-        cond_signal(&waitingToTransfer[currentDirection], &lock);
-    }
-    else if (runningTasks == 0){
-        cond_broadcast(&waitingToTransfer[1-currentDirection], &lock);
-    }
+    
+    
     lock_release(&lock);
+
+    if(runningTasks == BUS_CAPACITY){
+        sema_up(&fullBus);
+    }
 }
