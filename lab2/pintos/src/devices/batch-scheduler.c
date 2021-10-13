@@ -133,7 +133,7 @@ void getSlot(task_t task)
     lock_acquire(&lock);
     // Priority tasks
     if(task.priority == 1){
-        while((runningTasks == 3)|| (runningTasks > 0 && currentDirection != task.direction )){
+        while((runningTasks == 3) || (runningTasks > 0 && (currentDirection != task.direction) )){
             prioWaiters[task.direction]++;
             cond_wait(&prioWaitingToTransfer[task.direction], &lock);
             prioWaiters[task.direction]--;
@@ -141,7 +141,7 @@ void getSlot(task_t task)
     }
     // non-priority tasks
     else {
-        while((runningTasks == 3)|| (runningTasks > 0 && (currentDirection != task.direction) )){
+        while((runningTasks == 3) || (runningTasks > 0 && (currentDirection != task.direction) )){
             waiters[task.direction]++;
             cond_wait(&waitingToTransfer[task.direction], &lock);
             waiters[task.direction]--;
@@ -157,9 +157,14 @@ void getSlot(task_t task)
 void transferData(task_t task) 
 {
     /* FIXME implement */
-    // Sleep for x random ticks with sleep function implemented in Lab 2
-    int x = rand();
-    
+    tid_t tid = thread_tid();
+    thread_block();
+    int i = 0;
+    int x = random_ulong() % 100;
+    while(i < x){
+        i++;
+    }
+    thread_unblock(tid);
 }
 
 /* task releases the slot */
@@ -167,7 +172,7 @@ void leaveSlot(task_t task)
 {
     /* FIXME implement */
     
-    acquire(&lock);
+    lock_acquire(&lock);
     runningTasks--;
 
     if (prioWaiters[currentDirection] > 0){
@@ -184,5 +189,5 @@ void leaveSlot(task_t task)
     else if (runningTasks == 0){
         cond_broadcast(&waitingToTransfer[1-currentDirection], &lock);
     }
-    release(&lock);
+    lock_release(&lock);
 }
