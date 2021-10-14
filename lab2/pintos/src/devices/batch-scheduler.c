@@ -186,9 +186,9 @@ void leaveSlot(task_t task)
     runningTasks--;
 
     if (task.priority){
-        if (prioWaiters[currentDirection] > 0){
         lock_acquire(&prioLock);
-        sema_up(&prioWaitingToTransfer);
+        if (prioWaiters[currentDirection] > 0){
+            sema_up(&prioWaitingToTransfer);
         }
         else if (prioWaiters[1-currentDirection] > 0){
             if (runningTasks == 0){
@@ -205,9 +205,9 @@ void leaveSlot(task_t task)
         }
     }
     
-    lock_release(&lock);
-
     if(runningTasks == 0){
         sema_up(&fullBus);
     }
+
+    lock_release(&lock);
 }
