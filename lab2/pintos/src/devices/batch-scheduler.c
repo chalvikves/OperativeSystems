@@ -138,60 +138,37 @@ void oneTask(task_t task) {
 void getSlot(task_t task) 
 {
 
+
     if(currentDirection != task.direction && runningTasks < BUS_CAPACITY)
     {
         sema_down(&fullBus);
     }
 
-    if(task.direction == SENDER){
+    
+    // Priority tasks
+    if(task.priority == HIGH){
         lock_acquire(&lock);
-        // Priority tasks
-        if(task.priority == 1){
-            lock_acquire(&prioLock);
-            while((runningTasks == 3) || (runningTasks > 0 && currentDirection != task.direction )){
-                prioWaiters[task.direction]++;
-                sema_down(&prioWaitingToTransfer);
-                prioWaiters[task.direction]--;
-                sema_up(&prioWaitingToTransfer);
-            }
-            lock_release(&prioLock);
+        lock_acquire(&prioLock);
+        while((runningTasks == BUS_CAPACITY) || (runningTasks > 0 && currentDirection != task.direction )){
+            prioWaiters[task.direction]++;
+            sema_down(&prioWaitingToTransfer);
+            prioWaiters[task.direction]--;
         }
-        // non-priority tasks
-        else {
-            while((runningTasks == 3) || (runningTasks > 0 && currentDirection != task.direction )){
-                waiters[task.direction]++;
-                sema_down(&waitingToTransfer);
-                waiters[task.direction]--;
-            }
-        }
-        runningTasks++;
-        currentDirection = task.direction;
-        lock_release(&lock);
-    } else {
-        lock_acquire(&lock);
-        // Priority tasks
-        if(task.priority == 1){
-            lock_acquire(&prioLock);
-            while((runningTasks == 3) || (runningTasks > 0 && currentDirection != task.direction )){
-                prioWaiters[task.direction]++;
-                sema_down(&prioWaitingToTransfer);
-                prioWaiters[task.direction]--;
-                sema_up(&prioWaitingToTransfer);
-            }
-            lock_release(&prioLock);
-        }
-        // non-priority tasks
-        else {
-            while((runningTasks == 3) || (runningTasks > 0 && currentDirection != task.direction )){
-                waiters[task.direction]++;
-                sema_down(&waitingToTransfer);
-                waiters[task.direction]--;
-            }
-        }
-        runningTasks++;
-        currentDirection = task.direction;
-        lock_release(&lock);
+        lock_release(&prioLock);
     }
+    // non-priority tasks
+    else {
+        lock_acquire(&lock);
+        while((runningTasks == BUS_CAPACITY) || (runningTasks > 0 && currentDirection != task.direction )){
+            waiters[task.direction]++;
+            sema_down(&waitingToTransfer);
+            waiters[task.direction]--;
+        }
+    }
+    runningTasks++;
+    currentDirection = task.direction;
+    lock_release(&lock);
+    
     
     
 }
@@ -204,16 +181,14 @@ void transferData(task_t task)
 
 /* task releases the slot */
 void leaveSlot(task_t task) 
-{
-    /* FIXME implement */
-    
+{   
     lock_acquire(&lock);
     runningTasks--;
 
     if (task.priority){
         if (prioWaiters[currentDirection] > 0){
         lock_acquire(&prioLock);
-        sema_down(&prioWaitingToTransfer);
+        sema_up(&prioWaitingToTransfer);
         }
         else if (prioWaiters[1-currentDirection] > 0){
             if (runningTasks == 0){
@@ -230,10 +205,9 @@ void leaveSlot(task_t task)
         }
     }
     
-    
     lock_release(&lock);
 
-    if(runningTasks == BUS_CAPACITY){
+    if(runningTasks == 0){
         sema_up(&fullBus);
     }
 }
