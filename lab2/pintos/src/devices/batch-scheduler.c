@@ -229,6 +229,16 @@ void leaveSlot(task_t task)
     // If bus is empty, change direction
     if (busSpace.value == BUS_CAPACITY)
     {
-        direction = !direction;
+        if(task.direction == SENDER){
+            lock_acquire(&sendLock);
+            direction = RECEIVER;
+            lock_release(&sendLock);
+        } else
+        {
+            lock_acquire(&recLock);
+            direction = SENDER;
+            lock_release(&recLock);
+        }
+        
     }
 }
