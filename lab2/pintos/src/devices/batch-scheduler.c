@@ -164,7 +164,7 @@ void getSlot(task_t task)
         }
         else
         {
-            // Wait until priority is done, then aquire spot on bus
+            // Wait until priority is done, then acquire spot on bus
             sema_down(&sendPrioDone);
             sema_down(&busSpace);
             sema_up(&sendPrioDone);
@@ -197,7 +197,7 @@ void getSlot(task_t task)
         }
         else
         {
-            // Wait until priority is done, then aquire spot on bus
+            // Wait until priority is done, then acquire spot on bus
             sema_down(&recPrioDone);
             sema_down(&busSpace);
             sema_up(&recPrioDone);
