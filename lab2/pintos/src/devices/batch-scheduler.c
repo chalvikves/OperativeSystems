@@ -39,11 +39,13 @@ void transferData(task_t task); /* task processes data on the bus either sending
 void leaveSlot(task_t task);    /* task release the slot */
 
 struct semaphore busSpace;     /* To ensure that there are at most BUS_CAPACITY threads using the bus */
-struct semaphore sendPrioDone; /* Indicates if there are no more HIGH priority senders tasks */
-struct semaphore recPrioDone;  /* Indicates if there are no more HIGH priority recievers tasks */
+// struct semaphore sendPrioDone; /* Indicates if there are no more HIGH priority senders tasks */
+// struct semaphore recPrioDone;  /* Indicates if there are no more HIGH priority recievers tasks */
 
 struct lock sendLock; /* Lock used to update number of HIGH priority sender tasks */
 struct lock recLock;  /* Lock used to update number of HIGH priorities recieve tasks */
+struct lock sendPrioDone; /* Indicates if there are no more HIGH priority senders tasks */
+struct lock recPrioDone;  /* Indicates if there are no more HIGH priority recievers tasks */
 
 unsigned int numHighPrioSend; /* Number of HIGH priority sender tasks */
 unsigned int numHighPrioRec;  /* Number of HIGH priority recieve tasks */
@@ -56,12 +58,14 @@ void init_bus(void)
 
     // Init semaphores
     sema_init(&busSpace, BUS_CAPACITY);
-    sema_init(&sendPrioDone, 1);
-    sema_init(&recPrioDone, 1);
+    //sema_init(&sendPrioDone, 1);
+    //sema_init(&recPrioDone, 1);
 
     // Init locks
     lock_init(&sendLock);
     lock_init(&recLock);
+    lock_init(&sendPrioDone);
+    lock_init(&recPrioDone);
 
     // Variable init
     numHighPrioSend = 0;
@@ -148,6 +152,7 @@ void getSlot(task_t task)
     {
         if (task.priority == HIGH)
         {
+            lock_acquire(&sendPrioDone);
             // Aquire a space on the bus
             sema_down(&busSpace);
 
@@ -159,15 +164,18 @@ void getSlot(task_t task)
             // If there are no tasks left, tell normal priority that we are done
             if (numHighPrioSend == 0)
             {
-                sema_up(&sendPrioDone);
+                //sema_up(&sendPrioDone);
+                lock_release(&sendPrioDone);
             }
         }
         else
         {
             // Wait until priority is done, then aquire spot on bus
-            sema_down(&sendPrioDone);
+            //sema_down(&sendPrioDone);
+            lock_acquire(&sendPrioDone);
             sema_down(&busSpace);
-            sema_up(&sendPrioDone);
+            //sema_up(&sendPrioDone);
+            lock_release(&sendPrioDone);
         }
         // If the direction isn't right for the specific task
         if (task.direction != direction)
@@ -181,6 +189,7 @@ void getSlot(task_t task)
     {
         if (task.priority == HIGH)
         {
+            lock_acquire(&recPrioDone);
             // Aquire a space on the bus
             sema_down(&busSpace);
 
@@ -192,15 +201,18 @@ void getSlot(task_t task)
             // If there are no tasks left, tell normal priority that we are done
             if (numHighPrioRec == 0)
             {
-                sema_up(&sendPrioDone);
+                //sema_up(&sendPrioDone);
+                lock_release(&recPrioDone);
             }
         }
         else
         {
             // Wait until priority is done, then aquire spot on bus
-            sema_down(&recPrioDone);
+            //sema_down(&recPrioDone);
+            lock_acquire(&recPrioDone);
             sema_down(&busSpace);
-            sema_up(&recPrioDone);
+            //sema_up(&recPrioDone);
+            lock_release(&recPrioDone);
         }
 
         // If the direction isn't right for the specific task
