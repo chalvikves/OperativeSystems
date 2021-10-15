@@ -148,7 +148,7 @@ void getSlot(task_t task)
     {
         if (task.priority == HIGH)
         {
-            // Aquire a space on the bus
+            // Acquire a space on the bus
             sema_down(&busSpace);
 
             // Since task is done, remove from list
@@ -181,7 +181,7 @@ void getSlot(task_t task)
     {
         if (task.priority == HIGH)
         {
-            // Aquire a space on the bus
+            // Acquire a space on the bus
             sema_down(&busSpace);
 
             // Since task is done, remove from list
@@ -223,7 +223,7 @@ void transferData(task_t task)
 /* task releases the slot */
 void leaveSlot(task_t task)
 {
-    // Simply say that the task is done, and giving space on the bus
+    // Simply release its spot on the bus, giving space for another
     sema_up(&busSpace);
 
     // If bus is empty, change direction
