@@ -38,16 +38,16 @@ void getSlot(task_t task);      /* task tries to use slot on the bus */
 void transferData(task_t task); /* task processes data on the bus either sending or receiving based on the direction*/
 void leaveSlot(task_t task);    /* task release the slot */
 
-struct semaphore busSpace;      /* To ensure that there are at most BUS_CAPACITY threads using the bus */
-struct semaphore sendPrioDone;  /* Indicates if there are no more HIGH priority senders tasks */
-struct semaphore recPrioDone;   /* Indicates if there are no more HIGH priority recievers tasks */
+struct semaphore busSpace;     /* To ensure that there are at most BUS_CAPACITY threads using the bus */
+struct semaphore sendPrioDone; /* Indicates if there are no more HIGH priority senders tasks */
+struct semaphore recPrioDone;  /* Indicates if there are no more HIGH priority recievers tasks */
 
-struct lock sendLock;           /* Lock used to update number of HIGH priority sender tasks */
-struct lock recLock;            /* Lock used to update number of HIGH priorities recieve tasks */
+struct lock sendLock; /* Lock used to update number of HIGH priority sender tasks */
+struct lock recLock;  /* Lock used to update number of HIGH priorities recieve tasks */
 
-unsigned int numHighPrioSend;   /* Number of HIGH priority sender tasks */
-unsigned int numHighPrioRec;    /* Number of HIGH priority recieve tasks */
-int direction;                  /* The direction of the bus */
+unsigned int numHighPrioSend; /* Number of HIGH priority sender tasks */
+unsigned int numHighPrioRec;  /* Number of HIGH priority recieve tasks */
+int direction;                /* The direction of the bus */
 
 /* initializes semaphores */
 void init_bus(void)
@@ -74,7 +74,7 @@ void init_bus(void)
  *  sending data to the accelerator and num_task_receive + num_priority_receive tasks
  *  reading data/results from the accelerator.
  *
- *  Every task is represented by its own thread. 
+ *  Every task is represented by its own thread.
  *  Task requires and gets slot on bus system (1)
  *  process data and the bus (2)
  *  Leave the bus (3).
@@ -144,9 +144,9 @@ void oneTask(task_t task)
 /* task tries to get slot on the bus subsystem */
 void getSlot(task_t task)
 {
-    if(task.direction == SENDER)
+    if (task.direction == SENDER)
     {
-        if(task.priority == HIGH)
+        if (task.priority == HIGH)
         {
             // Aquire a space on the bus
             sema_down(&busSpace);
@@ -161,7 +161,8 @@ void getSlot(task_t task)
             {
                 sema_up(&sendPrioDone);
             }
-        } else
+        }
+        else
         {
             // Wait until priority is done, then aquire spot on bus
             sema_down(&sendPrioDone);
@@ -175,9 +176,10 @@ void getSlot(task_t task)
             direction = SENDER;
             lock_release(&sendLock);
         }
-    } else
+    }
+    else
     {
-         if(task.priority == HIGH)
+        if (task.priority == HIGH)
         {
             // Aquire a space on the bus
             sema_down(&busSpace);
@@ -192,7 +194,8 @@ void getSlot(task_t task)
             {
                 sema_up(&sendPrioDone);
             }
-        } else
+        }
+        else
         {
             // Wait until priority is done, then aquire spot on bus
             sema_down(&recPrioDone);
