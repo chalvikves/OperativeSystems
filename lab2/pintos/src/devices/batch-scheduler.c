@@ -148,20 +148,27 @@ void getSlot(task_t task)
     {
         if(task.priority == HIGH)
         {
+            // Aquire a space on the bus
             sema_down(&busSpace);
+
+            // Since task is done, remove from list
             lock_acquire(&sendLock);
             numHighPrioSend--;
             lock_release(&sendLock);
+
+            // If there are no tasks left, tell normal priority that we are done
             if (numHighPrioSend == 0)
             {
                 sema_up(&sendPrioDone);
             }
         } else
         {
+            // Wait until priority is done, then aquire spot on bus
             sema_down(&sendPrioDone);
             sema_down(&busSpace);
             sema_up(&sendPrioDone);
         }
+        // If the direction isn't right for the specific task
         if (task.direction != direction)
         {
             lock_acquire(&sendLock);
@@ -172,20 +179,28 @@ void getSlot(task_t task)
     {
          if(task.priority == HIGH)
         {
+            // Aquire a space on the bus
             sema_down(&busSpace);
+
+            // Since task is done, remove from list
             lock_acquire(&recLock);
             numHighPrioRec--;
             lock_release(&recLock);
+
+            // If there are no tasks left, tell normal priority that we are done
             if (numHighPrioRec == 0)
             {
                 sema_up(&sendPrioDone);
             }
         } else
         {
+            // Wait until priority is done, then aquire spot on bus
             sema_down(&recPrioDone);
             sema_down(&busSpace);
             sema_up(&recPrioDone);
         }
+
+        // If the direction isn't right for the specific task
         if (task.direction != direction)
         {
             lock_acquire(&recLock);
@@ -198,14 +213,17 @@ void getSlot(task_t task)
 /* task processes data on the bus send/receive */
 void transferData(task_t task)
 {
+    // Using sleep function implemented in lab2
     timer_sleep(random_ulong() % 10);
 }
 
 /* task releases the slot */
 void leaveSlot(task_t task)
 {
+    // Simply say that the task is done, and giving space on the bus
     sema_up(&busSpace);
 
+    // If bus is empty, change direction
     if (busSpace.value == BUS_CAPACITY)
     {
         direction = !direction;
