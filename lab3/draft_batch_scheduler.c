@@ -7,6 +7,7 @@
 #include "threads/synch.h"
 #include "threads/thread.h"
 #include "lib/random.h" //generate random numbers
+#include "devices/timer.h"
 
 #define BUS_CAPACITY 3
 #define SENDER 0
@@ -35,14 +36,13 @@ void receiverPriorityTask(void *);
     TODO global variables
 */
 
-condition waitingToTransfer[2]
-condition prioWaitingToTransfer[2]
-int waiters[2]
-int prioWaiters[2]
-int runningTasks
-int currentDirection
-
-    
+struct condition waitingToTransfer[2];
+struct condition prioWaitingToTransfer[2];
+struct lock lock;
+int waiters[2];
+int prioWaiters[2];
+int runningTasks;
+int currentDirection;
 
 
 void oneTask(task_t task);/*Task requires to use the bus and executes methods below*/
@@ -57,11 +57,18 @@ void init_bus(void){
  
     random_init((unsigned int)123456789); 
     
-    msg("NOT IMPLEMENTED");
-    /* TODO FIXME implement init semaphores */
-    // Initialize needed semaphores
-    sema_init(waitingToTransfer, 1);
-    sema_init(prioWaitingToTransfer, 1);
+    // Condition initialization
+    cond_init(&waitingToTransfer);
+    cond_init(&prioWaitingToTransfer);
+
+    // Lock initialization
+    lock_init(&lock);
+
+    // Init variables
+    waiters[2] = 0;
+    prioWaiters[2] = 0;
+    runningTasks = 0;
+    currentDirection = 0;
 }
 
 /*
@@ -132,62 +139,60 @@ void getSlot(task_t task)
 {
     /* TODO FIXME implement */
     
-    lock.acquire();
+    lock_acquire(&lock);
     // Priority tasks
-    if(priority == 1){
-        while((runningTasks == 3)|| (runningTasks > 0 && currentDirection != direction )){
-            prioWaiters[direction]++;
-            prioWaitingToTransfer[direction].wait();
-            prioWaiters[direction]--;
+    if(task.priority == HIGH){
+        while((runningTasks == 3)|| (runningTasks > 0 && currentDirection != task.direction )){
+            prioWaiters[task.direction]++;
+            // Kanske ska ha ett lås för vilken direction?
+            cond_wait(&prioWaitingToTransfer, &lock);
+            prioWaiters[task.direction]--;
         }
     }
     // non-priority tasks
     else {
-        while((runningTasks == 3)|| (runningTasks > 0 && currentDirection != direction )){
-            waiters[direction]++;
-            waitingToTransfer[direction].wait();
-            waiters[direction]--;
+        while((runningTasks == 3)|| (runningTasks > 0 && currentDirection != task.direction )){
+            waiters[task.direction]++;
+            cond_wait(&waitingToTransfer, &lock);
+            waiters[task.direction]--;
         }
     }
     
     runningTasks++;
-    currentDirection = direction;
-    lock.release();
+    currentDirection = task.direction;
+    lock_release(&lock);
        
 }
 
 /* task processes data on the bus send/receive */
 void transferData(task_t task) 
 {
-    /* TODO FIXME implement */
     
-    // Sleep for x random ticks with sleep function implemented in Lab 2
-    int x = rand();
-    timer.sleep(x);
+    // Using sleep function implemented in lab2
+    timer_sleep(random_ulong() % 10);
 }
 
 /* task releases the slot */
 void leaveSlot(task_t task) 
 {
-    /* TODO FIXME implement */
     
-    lock.acquire();
+    lock_acquire(&lock);
     runningTasks--;
 
     if (prioWaiters[currentDirection] > 0){
-        prioWaitingToTransfer[currentDirection].signal();
+        cond_signal(&prioWaitingToTransfer, &lock);
     }
     else if (prioWaiters[1-currentDirection] > 0){
         if (runningTasks == 0){
-            prioWaitingToTransfer[1-currentDirection].broadcast();
+            cond_broadcast(&prioWaitingToTransfer, &lock);
         }
     }
     else if (waiters[currentDirection] > 0){
-        waitingToTransfer[currentDirection].signal();
+        cond_signal(&waitingToTransfer, &lock);
     }
-    else if (cars == 0){
-        waitingToTransfer[1-currentDirection].broadcast();
+    else if (runningTasks == 0){
+        cond_broadcast(&waitingToTransfer, &lock);
     }
-    lock.release();
+    lock_release(&lock);
    
 }
