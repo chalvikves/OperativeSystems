@@ -142,7 +142,7 @@ void getSlot(task_t task)
     lock_acquire(&lock);
     // Priority tasks
     if(task.priority == HIGH){
-        while((runningTasks == 3)|| (runningTasks > 0 && currentDirection != task.direction )){
+        while((runningTasks == BUS_CAPACITY)|| (runningTasks > 0 && currentDirection != task.direction )){
             prioWaiters[task.direction]++;
             cond_wait(&prioWaitingToTransfer, &lock);
             prioWaiters[task.direction]--;
@@ -150,7 +150,7 @@ void getSlot(task_t task)
     }
     // non-priority tasks
     else {
-        while((runningTasks == 3)|| (runningTasks > 0 && currentDirection != task.direction )){
+        while((runningTasks == BUS_CAPACITY)|| (runningTasks > 0 && currentDirection != task.direction )){
             waiters[task.direction]++;
             cond_wait(&waitingToTransfer, &lock);
             waiters[task.direction]--;
