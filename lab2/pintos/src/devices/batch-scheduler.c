@@ -36,8 +36,8 @@ void receiverPriorityTask(void *);
     TODO global variables
 */
 
-struct condition waitingToTransfer[2];
-struct condition prioWaitingToTransfer[2];
+struct condition waitingToTransfer;
+struct condition prioWaitingToTransfer;
 struct lock lock;
 int waiters[2];
 int prioWaiters[2];
@@ -144,7 +144,6 @@ void getSlot(task_t task)
     if(task.priority == HIGH){
         while((runningTasks == 3)|| (runningTasks > 0 && currentDirection != task.direction )){
             prioWaiters[task.direction]++;
-            // Kanske ska ha ett lås för vilken direction?
             cond_wait(&prioWaitingToTransfer, &lock);
             prioWaiters[task.direction]--;
         }
