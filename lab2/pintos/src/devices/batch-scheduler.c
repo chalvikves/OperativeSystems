@@ -36,8 +36,8 @@ void receiverPriorityTask(void *);
     TODO global variables
 */
 
-struct condition waitingToTransfer;
-struct condition prioWaitingToTransfer;
+struct condition waitingToTransfer[2];
+struct condition prioWaitingToTransfer[2];
 struct lock lock;
 int waiters[2];
 int prioWaiters[2];
@@ -58,15 +58,19 @@ void init_bus(void){
     random_init((unsigned int)123456789); 
     
     // Condition initialization
-    cond_init(&waitingToTransfer);
-    cond_init(&prioWaitingToTransfer);
+    cond_init(&waitingToTransfer[0]);
+    cond_init(&waitingToTransfer[1]);
+    cond_init(&prioWaitingToTransfer[0]);
+    cond_init(&prioWaitingToTransfer[1]);
 
     // Lock initialization
     lock_init(&lock);
 
     // Init variables
-    waiters[2] = 0;
-    prioWaiters[2] = 0;
+    waiters[0] = 0;
+    waiters[1] = 0;
+    prioWaiters[0] = 0;
+    prioWaiters[1] = 0;
     runningTasks = 0;
     currentDirection = 0;
 }
@@ -144,7 +148,7 @@ void getSlot(task_t task)
     if(task.priority == HIGH){
         while((runningTasks == BUS_CAPACITY)|| (runningTasks > 0 && currentDirection != task.direction )){
             prioWaiters[task.direction]++;
-            cond_wait(&prioWaitingToTransfer, &lock);
+            cond_wait(&prioWaitingToTransfer[task.direction], &lock);
             prioWaiters[task.direction]--;
         }
     }
@@ -152,7 +156,7 @@ void getSlot(task_t task)
     else {
         while((runningTasks == BUS_CAPACITY)|| (runningTasks > 0 && currentDirection != task.direction )){
             waiters[task.direction]++;
-            cond_wait(&waitingToTransfer, &lock);
+            cond_wait(&waitingToTransfer[task.direction], &lock);
             waiters[task.direction]--;
         }
     }
@@ -177,20 +181,21 @@ void leaveSlot(task_t task)
     
     lock_acquire(&lock);
     runningTasks--;
+    int notCurrentDirection = (currentDirection +1) % 2;
 
     if (prioWaiters[currentDirection] > 0){
-        cond_signal(&prioWaitingToTransfer, &lock);
+        cond_signal(&prioWaitingToTransfer[currentDirection], &lock);
     }
-    else if (prioWaiters[1-currentDirection] > 0){
+    else if (prioWaiters[notCurrentDirection] > 0){
         if (runningTasks == 0){
-            cond_broadcast(&prioWaitingToTransfer, &lock);
+            cond_broadcast(&prioWaitingToTransfer[notCurrentDirection], &lock);
         }
     }
     else if (waiters[currentDirection] > 0){
-        cond_signal(&waitingToTransfer, &lock);
+        cond_signal(&waitingToTransfer[currentDirection], &lock);
     }
     else if (runningTasks == 0){
-        cond_broadcast(&waitingToTransfer, &lock);
+        cond_broadcast(&waitingToTransfer[notCurrentDirection], &lock);
     }
     lock_release(&lock);
    
