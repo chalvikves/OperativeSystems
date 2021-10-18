@@ -141,7 +141,7 @@ void getSlot(task_t task)
 
     // Priority tasks
     if(task.priority == HIGH){
-        while((runningTasks == BUS_CAPACITY)|| (runningTasks > 0 && currentDirection != task.direction )){
+        while((runningTasks == BUS_CAPACITY) || (runningTasks > 0 && currentDirection != task.direction )){
             prioWaiters[task.direction]++;
             cond_wait(&prioWaitingToTransfer[task.direction], &lock);
             prioWaiters[task.direction]--;
@@ -178,21 +178,24 @@ void leaveSlot(task_t task)
     lock_acquire(&lock);
     runningTasks--;
 
-    // 
+    // If there still are priority tasks in the current direction, signal to them first
     if (prioWaiters[currentDirection] > 0){
         cond_signal(&prioWaitingToTransfer[currentDirection], &lock);
     }
-    // 
+    // If there still are priority tasks in the opposite direction, 
+    // do nothing unless we are the last task to leave the bus.
+    // If so, broadcast to the priority tasks in the opposite direction.
     else if (prioWaiters[!currentDirection] > 0){
         if (runningTasks == 0){
             cond_broadcast(&prioWaitingToTransfer[!currentDirection], &lock);
         }
     }
-    // 
+    // If no priority waiters and we have waiters in the current direction,
+    // signal them to go
     else if (waiters[currentDirection] > 0){
         cond_signal(&waitingToTransfer[currentDirection], &lock);
     }
-    // 
+    // If the bus is empty and no tasks are running broadcast to other direction to go.
     else if (runningTasks == 0){
         cond_broadcast(&waitingToTransfer[!currentDirection], &lock);
     }
