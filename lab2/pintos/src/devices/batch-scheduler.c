@@ -168,7 +168,7 @@ void transferData(task_t task)
 {
     
     // Using sleep function implemented in lab2
-    timer_sleep(random_ulong() % 10);
+    timer_sleep(random_ulong() % 100);
 }
 
 /* task releases the slot */
